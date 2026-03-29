@@ -895,6 +895,13 @@ class SettingActivity : FragmentActivity() {
             ).show()
         },
         DividerSettingItem(),
+        ActionSettingItem(
+            R.string.user_scripts,
+            0,
+            R.string.user_scripts_summary
+        ) {
+            showUserScriptDialog()
+        }
 //        BooleanSettingItem(
 //            R.string.setting_title_enable_inplace_translate,
 //            0,
@@ -1163,6 +1170,46 @@ class SettingActivity : FragmentActivity() {
 
     private fun handleBookmarkSync(forceUpload: Boolean) {
         backupUnit.handleBookmarkSync(forceUpload)
+    }
+
+    private fun showUserScriptDialog() {
+        // 实现脚本管理对话框
+        val scripts = config.userScripts
+        val scriptNames = scripts.map { "${it.name} (${if (it.enabled) "启用" else "禁用"})" }.toTypedArray()
+        
+        AlertDialog.Builder(this, R.style.TouchAreaDialog).apply {
+            setTitle("用户脚本管理")
+            setItems(scriptNames) { _, which ->
+                val script = scripts[which]
+                showScriptOptionsDialog(script)
+            }
+            setPositiveButton("添加脚本") { _, _ ->
+                showAddScriptDialog()
+            }
+            setNegativeButton("取消", null)
+        }.create().show()
+    }
+
+    private fun showAddScriptDialog() {
+        // 实现添加脚本对话框
+        val view = layoutInflater.inflate(R.layout.dialog_add_script, null)
+        val nameEdit = view.findViewById<EditText>(R.id.script_name)
+        val urlEdit = view.findViewById<EditText>(R.id.url_pattern)
+        val contentEdit = view.findViewById<EditText>(R.id.script_content)
+        
+        AlertDialog.Builder(this).apply {
+            setTitle("添加用户脚本")
+            setView(view)
+            setPositiveButton("添加") { _, _ ->
+                val script = UserScript(
+                    name = nameEdit.text.toString(),
+                    urlPattern = urlEdit.text.toString(),
+                    scriptContent = contentEdit.text.toString()
+                )
+                config.addUserScript(script)
+            }
+            setNegativeButton("取消", null)
+        }.show()
     }
 
     @Suppress("DEPRECATION")

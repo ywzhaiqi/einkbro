@@ -25,6 +25,9 @@ class WebContentPostProcessor : KoinComponent {
             }
         }
 
+        // 处理用户脚本
+        processUserScripts(ebWebView, url)
+
         if (!ebWebView.shouldUseReaderFont() && (configManager.desktop || configManager.enableZoom)) {
             val context = application.applicationContext
             val width = if (ViewUnit.getWindowWidth(context) < 800) "800" else "device-width"
@@ -66,6 +69,34 @@ class WebContentPostProcessor : KoinComponent {
         if (configManager.enableZoomTextWrapReflow) {
             val jsZoomTextWrapReflow = HelperUnit.loadAssetFile("zoom-text-wrap-reflow.js")
             ebWebView.evaluateJavascript(jsZoomTextWrapReflow, null)
+        }
+    }
+
+    private fun processUserScripts(ebWebView: EBWebView, url: String) {
+        val userScripts = config.userScripts
+        for (script in userScripts) {
+            if (!script.enabled) continue
+            
+            // 简单的URL匹配，支持通配符
+            if (matchesUrl(url, script.urlPattern)) {
+                ebWebView.evaluateJavascript(script.scriptContent) { result ->
+                    if (result != null) {
+                        Log.d("UserScript", "Script ${script.name} executed: $result")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun matchesUrl(url: String, pattern: String): Boolean {
+        return if (pattern.contains("*")) {
+            // 需要转义正则特殊字符
+            val regexPattern = pattern.replace(".", "\\.")
+                                    .replace("$", "\\$")
+                                    .replace("*", ".*")
+            regexPattern.toRegex().matches(url)
+        } else {
+            url.contains(pattern)
         }
     }
 

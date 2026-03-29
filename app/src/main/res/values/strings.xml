@@ -36,6 +36,9 @@
     <string name="menu_other_searchSite">Search on site</string>
     <string name="menu_other_info">About EinkBro</string>
 
+    <string name="user_scripts">用户脚本</string>
+    <string name="user_scripts_summary">管理自定义JavaScript脚本</string>
+
     <!-- Dialog -->
     <string name="dialog_title_hint">Title:</string>
     <string name="dialog_url_hint">URL:</string>
