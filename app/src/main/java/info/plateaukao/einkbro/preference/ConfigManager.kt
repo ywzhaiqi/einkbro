@@ -25,6 +25,7 @@ import info.plateaukao.einkbro.view.Orientation
 import info.plateaukao.einkbro.view.toolbaricons.ToolbarAction
 import info.plateaukao.einkbro.viewmodel.TRANSLATE_API
 import info.plateaukao.einkbro.viewmodel.TtsType
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.Json.Default.decodeFromString
@@ -1070,6 +1071,44 @@ class ConfigManager(
         savedEpubFileInfos = savedEpubFileInfos.toMutableList().apply { remove(epubFileInfo) }
     }
 
+    var userScripts: List<UserScript>
+        get() {
+            val scriptsJson = sp.getString("user_scripts", "[]") ?: "[]"
+            return Json.decodeFromString(scriptsJson)
+        }
+        set(value) {
+            sp.edit { putString("user_scripts", Json.encodeToString(value)) }
+        }
+
+    fun addUserScript(script: UserScript) {
+        val scripts = userScripts.toMutableList()
+        scripts.add(script)
+        userScripts = scripts
+    }
+
+    fun removeUserScript(scriptName: String) {
+        val scripts = userScripts.toMutableList()
+        scripts.removeAll { it.name == scriptName }
+        userScripts = scripts
+    }
+
+    fun toggleScript(scriptName: String) {
+        val scripts = userScripts.toMutableList()
+        val index = scripts.indexOfFirst { it.name == scriptName }
+        if (index >= 0) {
+            scripts[index] = scripts[index].copy(enabled = !scripts[index].enabled)
+            userScripts = scripts
+        }
+    }
+
+    fun updateUserScript(oldName: String, updatedScript: UserScript) {
+        val scripts = userScripts.toMutableList()
+        val index = scripts.indexOfFirst { it.name == oldName }
+        if (index >= 0) {
+            scripts[index] = updatedScript
+            userScripts = scripts
+        }
+    }
 }
 
 class BooleanPreference(
@@ -1219,7 +1258,6 @@ enum class SaveHistoryMode {
 
 fun KMutableProperty0<Boolean>.toggle() = set(!get())
 
-
 @Serializable
 data class UserScript(
     val name: String,
@@ -1227,37 +1265,3 @@ data class UserScript(
     val scriptContent: String,
     val enabled: Boolean = true
 )
-
-// 用户脚本列表存储
-var userScripts: List<UserScript>
-    get() {
-        val scriptsJson = sp.getString("user_scripts", "[]") ?: "[]"
-        return Json.decodeFromString(scriptsJson)
-    }
-    set(value) {
-        sp.edit { putString("user_scripts", Json.encodeToString(value)) }
-    }
-
-// 添加用户脚本
-fun addUserScript(script: UserScript) {
-    val scripts = userScripts.toMutableList()
-    scripts.add(script)
-    userScripts = scripts
-}
-
-// 删除用户脚本
-fun removeUserScript(scriptName: String) {
-    val scripts = userScripts.toMutableList()
-    scripts.removeAll { it.name == scriptName }
-    userScripts = scripts
-}
-
-// 启用/禁用脚本
-fun toggleScript(scriptName: String) {
-    val scripts = userScripts.toMutableList()
-    val index = scripts.indexOfFirst { it.name == scriptName }
-    if (index >= 0) {
-        scripts[index] = scripts[index].copy(enabled = !scripts[index].enabled)
-        userScripts = scripts
-    }
-}

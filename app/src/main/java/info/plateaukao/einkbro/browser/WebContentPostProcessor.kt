@@ -1,7 +1,9 @@
 package info.plateaukao.einkbro.browser
 
 import android.app.Application
+import android.util.Log
 import info.plateaukao.einkbro.preference.ConfigManager
+import info.plateaukao.einkbro.preference.UserScript
 import info.plateaukao.einkbro.unit.HelperUnit
 import info.plateaukao.einkbro.unit.ViewUnit
 import info.plateaukao.einkbro.view.EBWebView
@@ -73,8 +75,8 @@ class WebContentPostProcessor : KoinComponent {
     }
 
     private fun processUserScripts(ebWebView: EBWebView, url: String) {
-        val userScripts = config.userScripts
-        for (script in userScripts) {
+        val scripts = configManager.userScripts
+        for (script in scripts) {
             if (!script.enabled) continue
             
             // 简单的URL匹配，支持通配符

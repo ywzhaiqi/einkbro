@@ -5,6 +5,10 @@ import android.content.Intent
 import android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION
 import android.os.Build
 import android.os.Bundle
+import android.app.AlertDialog
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.EditText
 import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.activity.compose.setContent
@@ -53,6 +57,7 @@ import info.plateaukao.einkbro.activity.SettingRoute.Ui
 import info.plateaukao.einkbro.activity.SettingRoute.UserAgent
 import info.plateaukao.einkbro.activity.SettingRoute.valueOf
 import info.plateaukao.einkbro.preference.ChatGPTActionInfo
+import info.plateaukao.einkbro.preference.UserScript
 import info.plateaukao.einkbro.preference.ConfigManager
 import info.plateaukao.einkbro.preference.HighlightStyle
 import info.plateaukao.einkbro.preference.TranslationTextStyle
@@ -1173,7 +1178,6 @@ class SettingActivity : FragmentActivity() {
     }
 
     private fun showUserScriptDialog() {
-        // 实现脚本管理对话框
         val scripts = config.userScripts
         val scriptNames = scripts.map { "${it.name} (${if (it.enabled) "启用" else "禁用"})" }.toTypedArray()
         
@@ -1207,6 +1211,56 @@ class SettingActivity : FragmentActivity() {
                     scriptContent = contentEdit.text.toString()
                 )
                 config.addUserScript(script)
+            }
+            setNegativeButton("取消", null)
+        }.show()
+    }
+
+    private fun showScriptOptionsDialog(script: UserScript) {
+        val options = arrayOf("编辑", "启用/禁用", "删除")
+        AlertDialog.Builder(this).apply {
+            setTitle(script.name)
+            setItems(options) { _, which ->
+                when (which) {
+                    0 -> showEditScriptDialog(script)
+                    1 -> config.toggleScript(script.name)
+                    2 -> {
+                        AlertDialog.Builder(this@SettingActivity).apply {
+                            setTitle("删除脚本")
+                            setMessage("确定要删除脚本 ${script.name} 吗？")
+                            setPositiveButton("删除") { _, _ ->
+                                config.removeUserScript(script.name)
+                            }
+                            setNegativeButton("取消", null)
+                        }.show()
+                    }
+                }
+            }
+            setNegativeButton("取消", null)
+        }.show()
+    }
+
+    private fun showEditScriptDialog(script: UserScript) {
+        val view = layoutInflater.inflate(R.layout.dialog_add_script, null)
+        val nameEdit = view.findViewById<EditText>(R.id.script_name)
+        val urlEdit = view.findViewById<EditText>(R.id.url_pattern)
+        val contentEdit = view.findViewById<EditText>(R.id.script_content)
+        
+        nameEdit.setText(script.name)
+        urlEdit.setText(script.urlPattern)
+        contentEdit.setText(script.scriptContent)
+        
+        AlertDialog.Builder(this).apply {
+            setTitle("编辑用户脚本")
+            setView(view)
+            setPositiveButton("保存") { _, _ ->
+                val updatedScript = UserScript(
+                    name = nameEdit.text.toString(),
+                    urlPattern = urlEdit.text.toString(),
+                    scriptContent = contentEdit.text.toString(),
+                    enabled = script.enabled
+                )
+                config.updateUserScript(script.name, updatedScript)
             }
             setNegativeButton("取消", null)
         }.show()

@@ -43,6 +43,7 @@
     <string name="dialog_title_hint">Title:</string>
     <string name="dialog_url_hint">URL:</string>
     <string name="dialog_extension_hint">Extension (for example: \".jpg\"):</string>
+    <string name="dialog_script_content_hint">JavaScript 代码:</string>
     <string name="dialog_title_download">Do you want to download the file?</string>
     <string name="dialog_content_resubmission">Would you like to resubmit your data?</string>
 
