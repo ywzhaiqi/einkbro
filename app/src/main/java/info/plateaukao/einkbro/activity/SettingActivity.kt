@@ -901,7 +901,7 @@ class SettingActivity : FragmentActivity() {
             R.string.user_scripts_summary
         ) {
             showUserScriptDialog()
-        }
+        },
 //        BooleanSettingItem(
 //            R.string.setting_title_enable_inplace_translate,
 //            0,
