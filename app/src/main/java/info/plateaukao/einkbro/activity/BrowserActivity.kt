@@ -96,6 +96,7 @@ import info.plateaukao.einkbro.preference.GptActionScope
 import info.plateaukao.einkbro.preference.HighlightStyle
 import info.plateaukao.einkbro.preference.NewTabBehavior
 import info.plateaukao.einkbro.preference.TranslationMode
+import info.plateaukao.einkbro.preference.UserExtensionRepository
 import info.plateaukao.einkbro.preference.toggle
 import info.plateaukao.einkbro.search.suggestion.SearchSuggestionViewModel
 import info.plateaukao.einkbro.service.ClearService
@@ -136,6 +137,7 @@ import info.plateaukao.einkbro.view.dialog.compose.FastToggleDialogFragment
 import info.plateaukao.einkbro.view.dialog.compose.FontBoldnessDialogFragment
 import info.plateaukao.einkbro.view.dialog.compose.FontDialogFragment
 import info.plateaukao.einkbro.view.dialog.compose.LanguageSettingDialogFragment
+import info.plateaukao.einkbro.view.dialog.compose.ActiveExtensionsDialogFragment
 import info.plateaukao.einkbro.view.dialog.compose.MenuDialogFragment
 import info.plateaukao.einkbro.view.dialog.compose.ReaderFontDialogFragment
 import info.plateaukao.einkbro.view.dialog.compose.PageAiActionDialogFragment
@@ -227,6 +229,7 @@ open class BrowserActivity : FragmentActivity(), BrowserController {
     private val instapaperViewModel: InstapaperViewModel by viewModels()
 
     private val searchSuggestionViewModel: SearchSuggestionViewModel by inject()
+    private val userExtensionRepository: UserExtensionRepository by inject()
 
     private val keyHandler: KeyHandler by lazy { KeyHandler(this, ebWebView, config) }
 
@@ -2916,6 +2919,20 @@ open class BrowserActivity : FragmentActivity(), BrowserController {
             { menuActionHandler.handle(it, ebWebView) },
             { menuActionHandler.handleLongClick(it) }
         ).show(supportFragmentManager, "menu_dialog")
+
+    override fun showActiveExtensionsDialog() {
+        val extensions = userExtensionRepository.getActiveExtensions().filter { it.enabled }
+        if (extensions.isEmpty()) {
+            EBToast.show(this, getString(R.string.active_extensions_empty))
+            return
+        }
+
+        ActiveExtensionsDialogFragment(extensions) { target ->
+            val script = userExtensionRepository.readScript(target) ?: return@ActiveExtensionsDialogFragment
+            getFocusedWebView().evaluateJavascript(script, null)
+        }
+            .show(supportFragmentManager, "active_extensions_dialog")
+    }
 
     override fun showWebArchiveFilePicker() {
         val fileName = "${ebWebView.title}.mht"

@@ -33,6 +33,7 @@ import info.plateaukao.einkbro.browser.EBWebChromeClient
 import info.plateaukao.einkbro.browser.EBWebViewClient
 import info.plateaukao.einkbro.browser.Javascript
 import info.plateaukao.einkbro.browser.JsWebInterface
+import info.plateaukao.einkbro.browser.UserExtensionInjector
 import info.plateaukao.einkbro.caption.DualCaptionProcessor
 import info.plateaukao.einkbro.database.BookmarkManager
 import info.plateaukao.einkbro.database.FaviconInfo
@@ -87,6 +88,7 @@ open class EBWebView(
     private val bookmarkManager: BookmarkManager by inject()
     private val javascript: Javascript by inject()
     private val cookie: Cookie by inject()
+    private val userExtensionInjector: UserExtensionInjector by inject()
 
     var translateApi: TRANSLATE_API = TRANSLATE_API.GOOGLE
     var isTranslateByParagraph = false
@@ -224,6 +226,7 @@ open class EBWebView(
         setWebViewClient(webViewClient)
         setWebChromeClient(webChromeClient)
         setDownloadListener(downloadListener)
+        userExtensionInjector.registerDocumentStartScripts(this)
 
         updateDarkMode()
         setupJsWebInterface()

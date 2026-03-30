@@ -213,6 +213,12 @@
             android:name=".activity.DataListActivity"
             android:label="@string/setting_title_whitelist" />
         <activity
+            android:name=".activity.UserExtensionsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".activity.UserExtensionEditActivity"
+            android:exported="false" />
+        <activity
             android:name=".activity.GptActionsActivity"
             android:exported="false" />
         <activity

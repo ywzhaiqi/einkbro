@@ -901,11 +901,11 @@ class SettingActivity : FragmentActivity() {
         },
         DividerSettingItem(),
         ActionSettingItem(
-            R.string.user_scripts,
+            R.string.user_extensions,
             0,
-            R.string.user_scripts_summary
+            R.string.user_extensions_summary
         ) {
-            showUserScriptDialog()
+            startActivity(UserExtensionsActivity.createIntent(this))
         },
 //        BooleanSettingItem(
 //            R.string.setting_title_enable_inplace_translate,

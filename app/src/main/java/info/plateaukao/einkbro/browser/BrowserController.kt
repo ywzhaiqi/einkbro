@@ -140,6 +140,7 @@ interface BrowserController {
     //region UI Toggles and Dialogs
     fun showFastToggleDialog()
     fun showMenuDialog()
+    fun showActiveExtensionsDialog()
     fun rotateScreen()
     fun toggleReceiveLink()
     //endregion

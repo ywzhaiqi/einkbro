@@ -38,6 +38,25 @@
 
     <string name="user_scripts">用户脚本</string>
     <string name="user_scripts_summary">管理自定义JavaScript脚本</string>
+    <string name="user_extensions">用户扩展</string>
+    <string name="user_extensions_summary">管理主动扩展和被动扩展</string>
+    <string name="user_extensions_empty">No extensions yet.</string>
+    <string name="active_extensions">主动扩展</string>
+    <string name="passive_extensions">被动扩展</string>
+    <string name="active_extensions_empty">No active extensions available.</string>
+    <string name="add_extension">添加扩展</string>
+    <string name="active_extension_edit">编辑主动扩展</string>
+    <string name="passive_extension_edit">编辑被动扩展</string>
+    <string name="extension_name">名称</string>
+    <string name="extension_untitled">未命名</string>
+    <string name="extension_name_required">名称不能为空</string>
+    <string name="extension_match_type">匹配类型</string>
+    <string name="extension_match_value">匹配值</string>
+    <string name="extension_match_value_hint">支持通配符 *，多个值使用 @@ 分隔</string>
+    <string name="extension_match_required">匹配值不能为空</string>
+    <string name="extension_run_at">运行时间</string>
+    <string name="extension_script">JavaScript 代码</string>
+    <string name="save">Save</string>
 
     <!-- Dialog -->
     <string name="dialog_title_hint">Title:</string>

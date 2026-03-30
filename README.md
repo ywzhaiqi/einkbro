@@ -81,6 +81,16 @@ Tailor the browser's interface to your workflow with extensive customization opt
 - **Split screen** — side-by-side browsing with AI chat or search results
 - **Quick toggle** — fast access to frequently used settings
 
+## User Extensions
+
+Automate page behavior with built-in user extensions.
+
+- **Active extensions** — save JavaScript snippets with a name, then run them manually from the browser menu on the current page
+- **Passive extensions** — auto-run JavaScript by URL rules with `DOMAIN` or `LINK` matching, `*` wildcards, and multiple match values separated by `@@`
+- **Run timing control** — choose between `EARLY` (document start when supported by WebView) and `DOMContentLoaded`
+- **Large script support** — extension code is stored as separate files instead of SharedPreferences, which makes large scripts more reliable to save and edit
+- **Legacy migration** — old user scripts are migrated automatically into passive extensions
+
 ## Browsing & Privacy
 
 Standard browser features with privacy controls and E-Ink-friendly optimizations.

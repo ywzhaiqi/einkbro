@@ -110,6 +110,7 @@ class MenuActionHandler(
             MenuItemType.BlackFont -> config::blackFontStyle.toggle()
             MenuItemType.Search -> browserController.showSearchPanel()
             MenuItemType.Download -> BrowserUnit.openDownloadFolder(activity)
+            MenuItemType.ActiveExtensions -> browserController.showActiveExtensionsDialog()
             MenuItemType.SaveArchive -> browserController.savePageForLater()
             MenuItemType.Settings -> IntentUnit.gotoSettings(activity)
 

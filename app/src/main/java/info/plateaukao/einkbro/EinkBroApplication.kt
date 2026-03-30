@@ -23,9 +23,11 @@ import info.plateaukao.einkbro.activity.SettingActivity
 import info.plateaukao.einkbro.browser.AdBlock
 import info.plateaukao.einkbro.browser.Cookie
 import info.plateaukao.einkbro.browser.Javascript
+import info.plateaukao.einkbro.browser.UserExtensionInjector
 import info.plateaukao.einkbro.database.BookmarkManager
 import info.plateaukao.einkbro.database.RecordDb
 import info.plateaukao.einkbro.preference.ConfigManager
+import info.plateaukao.einkbro.preference.UserExtensionRepository
 import info.plateaukao.einkbro.search.suggestion.SearchSuggestionViewModel
 import info.plateaukao.einkbro.service.InstapaperRepository
 import info.plateaukao.einkbro.service.TtsManager
@@ -62,6 +64,8 @@ class EinkBroApplication : Application() {
         single { AdBlock(androidContext()) }
         single { Javascript(androidContext()) }
         single { Cookie(androidContext()) }
+        single { UserExtensionRepository(androidContext(), get()) }
+        single { UserExtensionInjector(get()) }
         single { ttsManager }
         single { TtsNotificationManager(androidContext()) }
         single { InstapaperRepository() }

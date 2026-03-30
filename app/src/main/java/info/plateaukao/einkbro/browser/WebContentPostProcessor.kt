@@ -1,9 +1,8 @@
 package info.plateaukao.einkbro.browser
 
 import android.app.Application
-import android.util.Log
 import info.plateaukao.einkbro.preference.ConfigManager
-import info.plateaukao.einkbro.preference.UserScript
+import info.plateaukao.einkbro.preference.UserExtensionRepository
 import info.plateaukao.einkbro.unit.HelperUnit
 import info.plateaukao.einkbro.unit.ViewUnit
 import info.plateaukao.einkbro.view.EBWebView
@@ -13,6 +12,8 @@ import org.koin.core.component.inject
 class WebContentPostProcessor : KoinComponent {
     private val configManager: ConfigManager by inject()
     private val application: Application by inject()
+    private val userExtensionRepository: UserExtensionRepository by inject()
+    private val userExtensionInjector: UserExtensionInjector by inject()
 
     fun postProcess(ebWebView: EBWebView, url: String) {
         if (url.startsWith("data:text/html")) return
@@ -74,32 +75,13 @@ class WebContentPostProcessor : KoinComponent {
         }
     }
 
-    private fun processUserScripts(ebWebView: EBWebView, url: String) {
-        val scripts = configManager.userScripts
-        for (script in scripts) {
-            if (!script.enabled) continue
-            
-            // 简单的URL匹配，支持通配符
-            if (matchesUrl(url, script.urlPattern)) {
-                ebWebView.evaluateJavascript(script.scriptContent) { result ->
-                    if (result != null) {
-                        Log.d("UserScript", "Script ${script.name} executed: $result")
-                    }
-                }
-            }
-        }
+    fun registerUserExtensionScripts(ebWebView: EBWebView) {
+        userExtensionRepository.getExtensions()
+        userExtensionInjector.registerDocumentStartScripts(ebWebView)
     }
 
-    private fun matchesUrl(url: String, pattern: String): Boolean {
-        return if (pattern.contains("*")) {
-            // 需要转义正则特殊字符
-            val regexPattern = pattern.replace(".", "\\.")
-                                    .replace("$", "\\$")
-                                    .replace("*", ".*")
-            regexPattern.toRegex().matches(url)
-        } else {
-            url.contains(pattern)
-        }
+    private fun processUserScripts(ebWebView: EBWebView, url: String) {
+        userExtensionInjector.runFallbackScripts(ebWebView, url)
     }
 
     companion object {
