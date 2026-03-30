@@ -1,0 +1,44 @@
+# https://taskfile.dev
+
+version: '3'
+
+tasks:
+  build:
+    desc: Build the debug APK
+    cmds:
+      - cmd /c gradlew.bat assembleDebug
+
+  install:
+    desc: Install the debug APK on a connected device
+    cmds:
+      - cmd /c gradlew.bat installDebug
+
+  release:
+    desc: Build the release APK
+    cmds:
+      - cmd /c gradlew.bat assembleRelease
+
+  check:
+    desc: Compile Kotlin sources for the debug variant
+    cmds:
+      - cmd /c gradlew.bat :app:compileDebugKotlin
+
+  lint:
+    desc: Run Android lint
+    cmds:
+      - cmd /c gradlew.bat lint
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - cmd /c gradlew.bat test
+
+  apk:
+    desc: Build both debug and release APKs
+    cmds:
+      - cmd /c gradlew.bat assembleDebug assembleRelease
+
+  clean:
+    desc: Clean Gradle build outputs
+    cmds:
+      - cmd /c gradlew.bat clean
