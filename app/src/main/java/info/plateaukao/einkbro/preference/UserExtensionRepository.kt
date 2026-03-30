@@ -60,7 +60,80 @@ class UserExtensionRepository(
 
     fun getExtensions(): List<UserExtensionMeta> {
         migrateLegacyScriptsIfNeeded()
+        val extensions = readMetadata()
+        if (extensions.isEmpty()) {
+            createDefaultExtensions()
+        }
         return readMetadata()
+    }
+
+    private fun createDefaultExtensions() {
+        val imageInvertScript = """
+            var images = document.getElementsByTagName('img');
+            for (var i = 0; i < images.length; i++) {
+                images[i].style.filter = 'invert(100%)';
+            }
+        """.trimIndent()
+
+        val errorLogScript = """
+            (function() {
+                var errorLog = null;
+                var errorLogReady = false;
+                
+                function createErrorLog() {
+                    if (errorLog) return;
+                    errorLog = document.createElement('div');
+                    errorLog.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:2px solid red;font-size:12px;padding:5px;max-height:150px;overflow-y:auto;z-index:99999;';
+                    errorLogReady = true;
+                }
+                
+                window.addEventListener('error', function(e) {
+                    var msg = 'Error: ' + e.message + ' at ' + (e.filename ? e.filename.split('/').pop() : '') + ':' + e.lineno;
+                    
+                    if (errorLogReady) {
+                        var div = document.createElement('div');
+                        div.textContent = new Date().toLocaleTimeString() + ' ' + msg;
+                        div.style.color = 'red';
+                        errorLog.appendChild(div);
+                    } else {
+                        console.error('[ErrorLog]', msg);
+                    }
+                });
+                
+                if (document.body) {
+                    createErrorLog();
+                    document.body.appendChild(errorLog);
+                } else {
+                    document.addEventListener('DOMContentLoaded', function() {
+                        createErrorLog();
+                        document.body.appendChild(errorLog);
+                    });
+                }
+            })();
+        """.trimIndent()
+
+        val imageInvertMeta = UserExtensionMeta(
+            id = "default_image_invert",
+            type = ExtensionType.ACTIVE,
+            name = "图片反色",
+            enabled = true,
+            scriptFileName = "default_image_invert.js",
+        )
+
+        val errorLogMeta = UserExtensionMeta(
+            id = "default_error_log",
+            type = ExtensionType.PASSIVE,
+            name = "错误日志",
+            enabled = false,
+            scriptFileName = "default_error_log.js",
+            matchType = PassiveMatchType.DOMAIN,
+            matchValue = "*",
+            runAt = PassiveRunAt.EARLY,
+        )
+
+        writeScript(imageInvertMeta.scriptFileName, imageInvertScript)
+        writeScript(errorLogMeta.scriptFileName, errorLogScript)
+        writeMetadata(listOf(imageInvertMeta, errorLogMeta))
     }
 
     fun getActiveExtensions(): List<UserExtensionMeta> =
