@@ -21,12 +21,15 @@ import android.webkit.WebView.WebViewTransport
 import android.webkit.WebViewClient
 import info.plateaukao.einkbro.unit.HelperUnit
 import info.plateaukao.einkbro.view.EBWebView
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 
 class EBWebChromeClient(
     private val ebWebView: EBWebView,
     private val onReceiveFavicon: (Bitmap) -> Unit,
-) : WebChromeClient() {
+) : WebChromeClient(), KoinComponent {
     private val TAG: String = "EBWebChromeClient"
+    private val errorLogStore: ExtensionErrorLogStore by inject()
 
     private lateinit var webviewParent: ViewGroup
 
@@ -162,8 +165,53 @@ class EBWebChromeClient(
     }
 
     override fun onConsoleMessage(message: ConsoleMessage): Boolean {
-        Log.d(TAG, message.message())
+        val level = message.messageLevel().name
+        val source = message.sourceId().orEmpty()
+        val line = message.lineNumber()
+        val currentUrl = ebWebView.url.orEmpty()
+        recordExtensionErrorIfNeeded(message.message(), currentUrl, source, line)
+        Log.d(
+            TAG,
+            "[$level] ${message.message()} (source=$source:$line, page=$currentUrl)"
+        )
         return true
+    }
+
+    private fun recordExtensionErrorIfNeeded(
+        message: String,
+        pageUrl: String,
+        sourceId: String,
+        lineNumber: Int,
+    ) {
+        val payload = when {
+            message.startsWith(ExtensionErrorLogStore.ERROR_PREFIX) ->
+                message.removePrefix(ExtensionErrorLogStore.ERROR_PREFIX)
+
+            sourceId.startsWith(ExtensionErrorLogStore.SOURCE_PREFIX) ->
+                message
+
+            message.contains(ExtensionErrorLogStore.SOURCE_PREFIX) ->
+                message
+
+            else -> return
+        }
+
+        val extensionName = when {
+            payload.contains(": ") -> payload.substringBefore(": ").ifBlank { "Unknown extension" }
+            sourceId.startsWith(ExtensionErrorLogStore.SOURCE_PREFIX) -> sourceId
+                .removePrefix(ExtensionErrorLogStore.SOURCE_PREFIX)
+                .substringBefore("/")
+                .ifBlank { "Unknown extension" }
+            else -> "Unknown extension"
+        }
+
+        val details = when {
+            payload.contains(": ") && message.startsWith(ExtensionErrorLogStore.ERROR_PREFIX) ->
+                payload.substringAfter(": ", payload)
+            else -> payload
+        }
+
+        errorLogStore.append(extensionName, details, pageUrl, sourceId, lineNumber)
     }
 
     private val posterBitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)

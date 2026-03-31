@@ -44,10 +44,87 @@ class UserExtensionInjector(
             .filter { it.enabled && matches(url, it) }
             .forEach { extension ->
                 val scriptContent = repository.readScript(extension) ?: return@forEach
-                webView.evaluateJavascript(scriptContent) {
+                webView.evaluateJavascript(buildRuntimeWrappedScript(extension.name, scriptContent)) {
                     Log.d(TAG, "Fallback extension ${extension.name} executed: $it")
                 }
             }
+    }
+
+    fun buildRuntimeWrappedScript(
+        extensionName: String,
+        scriptContent: String,
+    ): String {
+        val sourceUrl = buildSourceUrl(extensionName)
+        return """
+            (function() {
+              const extensionName = ${extensionName.asJsString()};
+              const sourceUrl = ${sourceUrl.asJsString()};
+              const errorPrefix = ${ExtensionErrorLogStore.ERROR_PREFIX.asJsString()};
+              const userScript = ${scriptContent.asJsString()} + '\n//# sourceURL=' + sourceUrl;
+
+              function formatError(error) {
+                if (!error) return 'Unknown error';
+                if (typeof error === 'string') return error;
+                const message = error.message ? String(error.message) : String(error);
+                const stack = error.stack ? String(error.stack) : '';
+                return stack ? message + '\n' + stack : message;
+              }
+
+              function extractExtensionName(text) {
+                const match = String(text || '').match(/einkbro-extension:\/\/([^\s)\]]+)/);
+                if (!match) return 'Unknown extension';
+                try {
+                  return decodeURIComponent(match[1]);
+                } catch (_) {
+                  return match[1];
+                }
+              }
+
+              function installGlobalErrorHooks() {
+                if (window.__einkbroExtensionErrorHooksInstalled) {
+                  return;
+                }
+                window.__einkbroExtensionErrorHooksInstalled = true;
+
+                window.addEventListener('error', function(event) {
+                  const filename = event && event.filename ? String(event.filename) : '';
+                  const stack = event && event.error && event.error.stack ? String(event.error.stack) : '';
+                  if (filename.indexOf('einkbro-extension://') === -1 &&
+                      stack.indexOf('einkbro-extension://') === -1) {
+                    return;
+                  }
+
+                  const derivedExtensionName = extractExtensionName(filename || stack);
+                  const message = event && event.message
+                    ? String(event.message)
+                    : formatError(event && event.error);
+                  const location = filename
+                    ? ' @ ' + filename + ':' + (event.lineno || 0) + ':' + (event.colno || 0)
+                    : '';
+                  console.error(errorPrefix + derivedExtensionName + ': ' + message + location + (stack ? '\n' + stack : ''));
+                }, true);
+
+                window.addEventListener('unhandledrejection', function(event) {
+                  const reason = event ? event.reason : null;
+                  const formattedReason = formatError(reason);
+                  if (formattedReason.indexOf('einkbro-extension://') === -1) {
+                    return;
+                  }
+
+                  const derivedExtensionName = extractExtensionName(formattedReason);
+                  console.error(errorPrefix + derivedExtensionName + ': Unhandled promise rejection\n' + formattedReason);
+                });
+              }
+
+              installGlobalErrorHooks();
+
+              try {
+                (0, eval)(userScript);
+              } catch (error) {
+                console.error(errorPrefix + extensionName + ': ' + formatError(error));
+              }
+            })();
+        """.trimIndent()
     }
 
     private fun clearHandlers(webView: EBWebView) {
@@ -61,8 +138,6 @@ class UserExtensionInjector(
         val matchValuesJson = Json.encodeToString(repository.splitMatchValues(extension.matchValue))
         val matchType = (extension.matchType ?: PassiveMatchType.LINK).name
         val runAt = (extension.runAt ?: PassiveRunAt.DOM_CONTENT_LOADED).name
-        val escapedScriptContent = scriptContent.replace("$" + "{", "\\$" + "{")
-
         return """
             (function() {
               const extensionName = ${extension.name.asJsString()};
@@ -93,7 +168,7 @@ class UserExtensionInjector(
 
               const run = function() {
                 try {
-                  $escapedScriptContent
+                  ${buildRuntimeWrappedScript(extension.name, scriptContent)}
                 } catch (error) {
                   console.error('User extension failed: ' + extensionName, error);
                 }
@@ -109,6 +184,7 @@ class UserExtensionInjector(
                 run();
               }
             })();
+            //# sourceURL=${buildSourceUrl(extension.name)}
         """.trimIndent()
     }
 
@@ -135,6 +211,9 @@ class UserExtensionInjector(
             .replace("`", "\\`")
             .replace("$" + "{", "\\$" + "{")
             .let { "\"$it\"" }
+
+    private fun buildSourceUrl(extensionName: String): String =
+        "einkbro-extension://${Uri.encode(extensionName)}"
 
     companion object {
         private const val TAG = "UserExtensionInjector"

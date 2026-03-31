@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.CopyAll
 import androidx.compose.material.icons.outlined.Copyright
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.InstallMobile
@@ -134,7 +135,7 @@ enum class MenuItemType {
     ReceiveData, SendLink, ShareLink, OpenWith, CopyLink, Shortcut,
     SetHome, SaveBookmark, Epub, SavePdf,
     FontSize, WhiteBknd, BoldFont, Search, Download, Settings, BlackFont,
-    SaveArchive, Highlights, InvertColor, ChatWithWeb, Instapaper, ActiveExtensions
+    SaveArchive, Highlights, InvertColor, ChatWithWeb, Instapaper, ActiveExtensions, ExtensionErrors
 }
 
 @Composable
@@ -387,6 +388,10 @@ private fun MenuItems(
                 R.string.active_extensions,
                 Icons.Outlined.PlayArrow
             ) { onClicked(MenuItemType.ActiveExtensions) }
+            MenuItem(
+                R.string.extension_error_logs,
+                Icons.Outlined.ErrorOutline
+            ) { onClicked(MenuItemType.ExtensionErrors) }
             MenuItem(
                 R.string.toolbar_icons,
                 Icons.Outlined.Straighten

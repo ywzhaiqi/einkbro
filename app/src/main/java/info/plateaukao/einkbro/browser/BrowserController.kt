@@ -141,6 +141,7 @@ interface BrowserController {
     fun showFastToggleDialog()
     fun showMenuDialog()
     fun showActiveExtensionsDialog()
+    fun showExtensionErrorLogs()
     fun rotateScreen()
     fun toggleReceiveLink()
     //endregion

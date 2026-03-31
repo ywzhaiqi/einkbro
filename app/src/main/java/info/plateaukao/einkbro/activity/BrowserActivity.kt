@@ -88,6 +88,7 @@ import info.plateaukao.einkbro.epub.EpubManager
 import info.plateaukao.einkbro.preference.AlbumInfo
 import info.plateaukao.einkbro.preference.ChatGPTActionInfo
 import info.plateaukao.einkbro.preference.ConfigManager
+import info.plateaukao.einkbro.browser.UserExtensionInjector
 import info.plateaukao.einkbro.preference.DarkMode
 import info.plateaukao.einkbro.preference.FabPosition
 import info.plateaukao.einkbro.preference.FontType
@@ -133,6 +134,7 @@ import info.plateaukao.einkbro.view.dialog.compose.ActionModeMenu
 import info.plateaukao.einkbro.view.dialog.compose.BookmarksDialogFragment
 import info.plateaukao.einkbro.view.dialog.compose.ContextMenuDialogFragment
 import info.plateaukao.einkbro.view.dialog.compose.ContextMenuItemType
+import info.plateaukao.einkbro.view.dialog.compose.ExtensionErrorLogDialogFragment
 import info.plateaukao.einkbro.view.dialog.compose.FastToggleDialogFragment
 import info.plateaukao.einkbro.view.dialog.compose.FontBoldnessDialogFragment
 import info.plateaukao.einkbro.view.dialog.compose.FontDialogFragment
@@ -230,6 +232,7 @@ open class BrowserActivity : FragmentActivity(), BrowserController {
 
     private val searchSuggestionViewModel: SearchSuggestionViewModel by inject()
     private val userExtensionRepository: UserExtensionRepository by inject()
+    private val userExtensionInjector: UserExtensionInjector by inject()
 
     private val keyHandler: KeyHandler by lazy { KeyHandler(this, ebWebView, config) }
 
@@ -2929,9 +2932,16 @@ open class BrowserActivity : FragmentActivity(), BrowserController {
 
         ActiveExtensionsDialogFragment(extensions) { target ->
             val script = userExtensionRepository.readScript(target) ?: return@ActiveExtensionsDialogFragment
-            getFocusedWebView().evaluateJavascript(script, null)
+            getFocusedWebView().evaluateJavascript(
+                userExtensionInjector.buildRuntimeWrappedScript(target.name, script),
+                null
+            )
         }
             .show(supportFragmentManager, "active_extensions_dialog")
+    }
+
+    override fun showExtensionErrorLogs() {
+        ExtensionErrorLogDialogFragment().show(supportFragmentManager, "extension_error_logs")
     }
 
     override fun showWebArchiveFilePicker() {

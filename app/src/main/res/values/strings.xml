@@ -44,6 +44,9 @@
     <string name="active_extensions">主动扩展</string>
     <string name="passive_extensions">被动扩展</string>
     <string name="active_extensions_empty">No active extensions available.</string>
+    <string name="extension_error_logs">扩展错误</string>
+    <string name="extension_error_logs_clear">清空</string>
+    <string name="extension_error_logs_empty">还没有记录到扩展错误。</string>
     <string name="add_extension">添加扩展</string>
     <string name="active_extension_edit">编辑主动扩展</string>
     <string name="passive_extension_edit">编辑被动扩展</string>

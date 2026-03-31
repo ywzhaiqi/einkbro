@@ -22,6 +22,7 @@ import info.plateaukao.einkbro.activity.BrowserActivity
 import info.plateaukao.einkbro.activity.SettingActivity
 import info.plateaukao.einkbro.browser.AdBlock
 import info.plateaukao.einkbro.browser.Cookie
+import info.plateaukao.einkbro.browser.ExtensionErrorLogStore
 import info.plateaukao.einkbro.browser.Javascript
 import info.plateaukao.einkbro.browser.UserExtensionInjector
 import info.plateaukao.einkbro.database.BookmarkManager
@@ -65,6 +66,7 @@ class EinkBroApplication : Application() {
         single { Javascript(androidContext()) }
         single { Cookie(androidContext()) }
         single { UserExtensionRepository(androidContext(), get()) }
+        single { ExtensionErrorLogStore() }
         single { UserExtensionInjector(get()) }
         single { ttsManager }
         single { TtsNotificationManager(androidContext()) }

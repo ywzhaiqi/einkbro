@@ -111,6 +111,7 @@ class MenuActionHandler(
             MenuItemType.Search -> browserController.showSearchPanel()
             MenuItemType.Download -> BrowserUnit.openDownloadFolder(activity)
             MenuItemType.ActiveExtensions -> browserController.showActiveExtensionsDialog()
+            MenuItemType.ExtensionErrors -> browserController.showExtensionErrorLogs()
             MenuItemType.SaveArchive -> browserController.savePageForLater()
             MenuItemType.Settings -> IntentUnit.gotoSettings(activity)
 
