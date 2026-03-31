@@ -38,29 +38,106 @@ class UserExtensionInjector(
     }
 
     fun runFallbackScripts(webView: EBWebView, url: String) {
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        val candidateUrls = listOf(url, webView.url.orEmpty()).filter { it.isNotBlank() }.distinct()
+        val matchedExtensions = repository.getPassiveExtensions()
+            .filter { it.enabled && matchesAny(candidateUrls, it) }
 
-        repository.getPassiveExtensions()
-            .filter { it.enabled && matches(url, it) }
-            .forEach { extension ->
+        matchedExtensions.forEach { extension ->
                 val scriptContent = repository.readScript(extension) ?: return@forEach
-                webView.evaluateJavascript(buildRuntimeWrappedScript(extension.name, scriptContent)) {
-                    Log.d(TAG, "Fallback extension ${extension.name} executed: $it")
+                val documentReady = webView.url.orEmpty().isNotBlank()
+                webView.post {
+                    webView.evaluateJavascript(
+                        buildLegacyFallbackScript(
+                            extension = extension,
+                            scriptContent = scriptContent,
+                            shouldPersistExecutionState = documentReady,
+                        )
+                    ) {
+                        Log.d(TAG, "Fallback extension ${extension.name} executed: $it")
+                    }
                 }
             }
+    }
+
+    private fun matchesAny(urls: List<String>, extension: UserExtensionMeta): Boolean {
+        if (urls.isEmpty()) return false
+        return urls.any { matches(it, extension) }
+    }
+
+    private fun buildLegacyFallbackScript(
+        extension: UserExtensionMeta,
+        scriptContent: String,
+        shouldPersistExecutionState: Boolean,
+    ): String {
+        val extensionName = extension.name
+        val sourceUrl = buildSourceUrl(extensionName)
+        val runAt = (extension.runAt ?: PassiveRunAt.DOM_CONTENT_LOADED).name
+        val persistExecutionState = if (shouldPersistExecutionState) {
+            "executionState[extensionName] = true;"
+        } else {
+            ""
+        }
+        return """
+            (function() {
+              const extensionName = ${extensionName.asJsString()};
+              const runAt = ${runAt.asJsString()};
+              const executionState = window.__einkbroExecutedPassiveExtensions || (window.__einkbroExecutedPassiveExtensions = {});
+              if (executionState[extensionName]) {
+                return;
+              }
+
+              const run = function() {
+                if (executionState[extensionName]) {
+                  return;
+                }
+                try {
+                  $scriptContent
+                  $persistExecutionState
+                } catch (error) {
+                  const message = error && error.message ? error.message : String(error);
+                  const stack = error && error.stack ? error.stack : '';
+                  console.error(${ExtensionErrorLogStore.ERROR_PREFIX.asJsString()} + extensionName + ': ' + message + (stack ? '\n' + stack : ''));
+                }
+              };
+
+              if (runAt === 'DOM_CONTENT_LOADED' && document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', run, { once: true });
+              } else {
+                run();
+              }
+            })();
+            //# sourceURL=$sourceUrl
+        """.trimIndent()
     }
 
     fun buildRuntimeWrappedScript(
         extensionName: String,
         scriptContent: String,
+        preventDuplicateExecution: Boolean = false,
     ): String {
         val sourceUrl = buildSourceUrl(extensionName)
+        val duplicateGuard = if (preventDuplicateExecution) {
+            """
+              const executionState = window.__einkbroExecutedPassiveExtensions || (window.__einkbroExecutedPassiveExtensions = {});
+              if (executionState[extensionName]) {
+                return;
+              }
+            """.trimIndent()
+        } else {
+            ""
+        }
+        val markExecuted = if (preventDuplicateExecution) {
+            "executionState[extensionName] = true;"
+        } else {
+            ""
+        }
         return """
             (function() {
               const extensionName = ${extensionName.asJsString()};
               const sourceUrl = ${sourceUrl.asJsString()};
               const errorPrefix = ${ExtensionErrorLogStore.ERROR_PREFIX.asJsString()};
               const userScript = ${scriptContent.asJsString()} + '\n//# sourceURL=' + sourceUrl;
+              $duplicateGuard
 
               function formatError(error) {
                 if (!error) return 'Unknown error';
@@ -120,6 +197,7 @@ class UserExtensionInjector(
 
               try {
                 (0, eval)(userScript);
+                $markExecuted
               } catch (error) {
                 console.error(errorPrefix + extensionName + ': ' + formatError(error));
               }
@@ -147,18 +225,46 @@ class UserExtensionInjector(
               const currentUrl = window.location.href;
               const currentHost = window.location.hostname;
 
-              function escapeRegex(value) {
-                return value.replace(/[.*+?^${'$'}()|[\]\\]/g, '\\$&');
-              }
+              function globMatches(pattern, target) {
+                const normalizedPattern = String(pattern || '').toLowerCase();
+                const normalizedTarget = String(target || '').toLowerCase();
+                if (normalizedPattern === '*') {
+                  return true;
+                }
 
-              function globToRegex(value) {
-                return new RegExp('^' + escapeRegex(value).replace(/\\\*/g, '.*') + '$');
+                const parts = normalizedPattern.split('*');
+                const startsWithWildcard = normalizedPattern.startsWith('*');
+                const endsWithWildcard = normalizedPattern.endsWith('*');
+                let currentIndex = 0;
+
+                for (let index = 0; index < parts.length; index++) {
+                  const part = parts[index];
+                  if (!part) continue;
+
+                  const foundIndex = normalizedTarget.indexOf(part, currentIndex);
+                  if (foundIndex === -1) {
+                    return false;
+                  }
+
+                  if (index === 0 && !startsWithWildcard && foundIndex !== 0) {
+                    return false;
+                  }
+
+                  currentIndex = foundIndex + part.length;
+                }
+
+                if (!endsWithWildcard) {
+                  const lastPart = parts[parts.length - 1];
+                  return !lastPart || normalizedTarget.endsWith(lastPart);
+                }
+
+                return true;
               }
 
               function matches() {
                 const target = matchType === 'DOMAIN' ? currentHost : currentUrl;
                 return matchValues.some(function(value) {
-                  return globToRegex(value).test(target);
+                  return globMatches(value, target);
                 });
               }
 
@@ -168,7 +274,7 @@ class UserExtensionInjector(
 
               const run = function() {
                 try {
-                  ${buildRuntimeWrappedScript(extension.name, scriptContent)}
+                  ${buildRuntimeWrappedScript(extension.name, scriptContent, preventDuplicateExecution = true)}
                 } catch (error) {
                   console.error('User extension failed: ' + extensionName, error);
                 }
@@ -189,16 +295,37 @@ class UserExtensionInjector(
     }
 
     private fun matches(url: String, extension: UserExtensionMeta): Boolean {
+        val matchValues = repository.splitMatchValues(extension.matchValue)
+        if (matchValues.contains("*")) return true
+
         val target = when (extension.matchType ?: PassiveMatchType.LINK) {
             PassiveMatchType.DOMAIN -> Uri.parse(url).host.orEmpty()
             PassiveMatchType.LINK -> url
         }
-        return repository.splitMatchValues(extension.matchValue).any { globToRegex(it).matches(target) }
+        return matchValues.any { globMatches(it, target) }
     }
 
-    private fun globToRegex(value: String): Regex {
-        val escaped = Regex.escape(value).replace("\\*", ".*")
-        return Regex("^$escaped$")
+    private fun globMatches(pattern: String, target: String): Boolean {
+        if (pattern == "*") return true
+
+        val normalizedPattern = pattern.lowercase()
+        val normalizedTarget = target.lowercase()
+        val parts = normalizedPattern.split('*')
+        val startsWithWildcard = normalizedPattern.startsWith('*')
+        val endsWithWildcard = normalizedPattern.endsWith('*')
+        var currentIndex = 0
+
+        parts.forEachIndexed { index, part ->
+            if (part.isEmpty()) return@forEachIndexed
+
+            val foundIndex = normalizedTarget.indexOf(part, currentIndex)
+            if (foundIndex < 0) return false
+            if (index == 0 && !startsWithWildcard && foundIndex != 0) return false
+            currentIndex = foundIndex + part.length
+        }
+
+        val lastPart = parts.lastOrNull().orEmpty()
+        return endsWithWildcard || lastPart.isEmpty() || normalizedTarget.endsWith(lastPart)
     }
 
     private fun String.asJsString(): String =

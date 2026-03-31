@@ -12,6 +12,7 @@
 * Sort history URLs newest-first in URL bar suggestions
 * Request persistent write permission for EPUB file URIs
 * Update Edge TTS to use Chromium 143 headers and MUID cookie
+* Fix passive extension domain matching on older WebView versions by yyy
 
 ---
 

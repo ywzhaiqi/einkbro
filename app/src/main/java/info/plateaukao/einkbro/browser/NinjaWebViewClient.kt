@@ -77,6 +77,7 @@ class EBWebViewClient(
         ebWebView.innerScrollTop = 0
         ebWebView.innerScrollHeight = 0
         ebWebView.innerClientHeight = 0
+        webContentPostProcessor.registerUserExtensionScripts(ebWebView, url.orEmpty())
 
         if (config.adBlock) {
             adFilter.performScript(view, url)
