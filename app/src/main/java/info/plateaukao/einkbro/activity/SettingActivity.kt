@@ -83,6 +83,7 @@ import info.plateaukao.einkbro.view.compose.MyTheme
 import info.plateaukao.einkbro.view.dialog.DialogManager
 import info.plateaukao.einkbro.view.dialog.PrinterDocumentPaperSizeDialog
 import info.plateaukao.einkbro.view.dialog.TranslationLanguageDialog
+import info.plateaukao.einkbro.view.dialog.compose.ExtensionErrorLogDialogFragment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
@@ -906,6 +907,15 @@ class SettingActivity : FragmentActivity() {
             R.string.user_extensions_summary
         ) {
             startActivity(UserExtensionsActivity.createIntent(this))
+        },
+        ActionSettingItem(
+            R.string.extension_error_logs,
+            0,
+        ) {
+            ExtensionErrorLogDialogFragment().show(
+                supportFragmentManager,
+                "extension_error_logs"
+            )
         },
 //        BooleanSettingItem(
 //            R.string.setting_title_enable_inplace_translate,

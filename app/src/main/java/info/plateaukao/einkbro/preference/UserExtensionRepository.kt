@@ -37,11 +37,34 @@ data class UserExtensionMeta(
     val matchType: PassiveMatchType? = null,
     val matchValue: String? = null,
     val runAt: PassiveRunAt? = null,
+    val origin: ExtensionOrigin = ExtensionOrigin.USER,
 )
+
+@Serializable
+enum class ExtensionOrigin {
+    BUNDLED,
+    USER,
+    IMPORTED,
+    LEGACY
+}
 
 data class UserExtension(
     val meta: UserExtensionMeta,
     val scriptContent: String,
+)
+
+@Serializable
+data class AppManagedMetadata(
+    val extensions: List<ExtensionIndex> = emptyList(),
+)
+
+@Serializable
+data class ExtensionIndex(
+    val id: String,
+    val fileName: String,
+    val enabled: Boolean,
+    val origin: ExtensionOrigin = ExtensionOrigin.USER,
+    val matchType: PassiveMatchType? = null,
 )
 
 class UserExtensionRepository(
@@ -58,82 +81,113 @@ class UserExtensionRepository(
         File(context.filesDir, SCRIPT_DIRECTORY).apply { mkdirs() }
     }
 
-    fun getExtensions(): List<UserExtensionMeta> {
-        migrateLegacyScriptsIfNeeded()
-        val extensions = readMetadata()
-        if (extensions.isEmpty()) {
-            createDefaultExtensions()
-        }
-        return readMetadata()
+    private val appMetadataFile: File by lazy {
+        File(context.filesDir, APP_METADATA_FILE)
     }
 
-    private fun createDefaultExtensions() {
-        val imageInvertScript = """
-            var images = document.getElementsByTagName('img');
-            for (var i = 0; i < images.length; i++) {
-                images[i].style.filter = 'invert(100%)';
+    fun getExtensions(): List<UserExtensionMeta> {
+        migrateLegacyScriptsIfNeeded()
+        installBundledExtensionsIfNeeded()
+
+        val appMetadata = readAppMetadata()
+        val extensions = readInstalledExtensionFiles(appMetadata)
+
+        if (extensions.isEmpty()) {
+            installBundledExtensionsIfNeeded()
+            return readInstalledExtensionFiles(readAppMetadata())
+        }
+
+        return extensions
+    }
+
+    private fun installBundledExtensionsIfNeeded() {
+        if (sharedPreferences.getBoolean(KEY_BUNDLED_INSTALLED, false)) return
+
+        val bundledAssets = context.assets.list(ASSET_EXTENSION_DIRECTORY)
+            ?.filter { it.endsWith(USER_SCRIPT_SUFFIX) }
+            ?.sorted()
+            ?.map { "$ASSET_EXTENSION_DIRECTORY/$it" }
+            .orEmpty()
+
+        val appMetadata = readAppMetadata()
+        val existingIds = appMetadata.extensions.map { it.id }.toMutableSet()
+        val newExtensions = mutableListOf<ExtensionIndex>()
+
+        for (assetPath in bundledAssets) {
+            val assetContent = try {
+                context.assets.open(assetPath).bufferedReader().use { it.readText() }
+            } catch (e: Exception) {
+                continue
             }
-        """.trimIndent()
 
-        val errorLogScript = """
-            (function() {
-                var errorLog = null;
-                var errorLogReady = false;
-                
-                function createErrorLog() {
-                    if (errorLog) return;
-                    errorLog = document.createElement('div');
-                    errorLog.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:2px solid red;font-size:12px;padding:5px;max-height:150px;overflow-y:auto;z-index:99999;';
-                    errorLogReady = true;
-                }
-                
-                window.addEventListener('error', function(e) {
-                    var msg = 'Error: ' + e.message + ' at ' + (e.filename ? e.filename.split('/').pop() : '') + ':' + e.lineno;
-                    
-                    if (errorLogReady) {
-                        var div = document.createElement('div');
-                        div.textContent = new Date().toLocaleTimeString() + ' ' + msg;
-                        div.style.color = 'red';
-                        errorLog.appendChild(div);
-                    } else {
-                        console.error('[ErrorLog]', msg);
-                    }
-                });
-                
-                if (document.body) {
-                    createErrorLog();
-                    document.body.appendChild(errorLog);
-                } else {
-                    document.addEventListener('DOMContentLoaded', function() {
-                        createErrorLog();
-                        document.body.appendChild(errorLog);
-                    });
-                }
-            })();
-        """.trimIndent()
+            val parsed = UserScriptParser.parse(assetContent)
+            val fileName = assetPath.substringAfterLast('/')
+            val id = fileName.removeSuffix(".user.js")
+            val scriptFile = File(scriptsDir, fileName)
 
-        val imageInvertMeta = UserExtensionMeta(
-            id = "default_image_invert",
-            type = ExtensionType.ACTIVE,
-            name = "图片反色",
-            enabled = true,
-            scriptFileName = "default_image_invert.js",
-        )
+            if (!scriptFile.exists()) {
+                scriptFile.writeText(assetContent)
+            }
 
-        val errorLogMeta = UserExtensionMeta(
-            id = "default_error_log",
-            type = ExtensionType.PASSIVE,
-            name = "错误日志",
-            enabled = false,
-            scriptFileName = "default_error_log.js",
-            matchType = PassiveMatchType.DOMAIN,
-            matchValue = "*",
-            runAt = PassiveRunAt.EARLY,
-        )
+            if (id !in existingIds) {
+                val bundledMeta = UserScriptParser.parseToUserExtensionMeta(
+                    parsed = parsed,
+                    id = id,
+                    scriptFileName = fileName,
+                )
+                newExtensions.add(
+                    ExtensionIndex(
+                        id = id,
+                        fileName = fileName,
+                        enabled = bundledMeta.type == ExtensionType.ACTIVE,
+                        origin = ExtensionOrigin.BUNDLED,
+                        matchType = bundledMeta.matchType,
+                    )
+                )
+            }
+        }
 
-        writeScript(imageInvertMeta.scriptFileName, imageInvertScript)
-        writeScript(errorLogMeta.scriptFileName, errorLogScript)
-        writeMetadata(listOf(imageInvertMeta, errorLogMeta))
+        if (newExtensions.isNotEmpty()) {
+            writeAppMetadata(AppManagedMetadata(extensions = appMetadata.extensions + newExtensions))
+        }
+        sharedPreferences.edit { putBoolean(KEY_BUNDLED_INSTALLED, true) }
+    }
+
+    private fun readInstalledExtensionFiles(appMetadata: AppManagedMetadata): List<UserExtensionMeta> {
+        val metadataByFileName = appMetadata.extensions.associateBy { it.fileName }
+        val metadataById = appMetadata.extensions.associateBy { it.id }
+        val files = scriptsDir.listFiles { file -> file.extension == "js" || file.extension == "user.js" }
+            ?: return emptyList()
+
+        return files.mapNotNull { file ->
+            val fallbackId = file.nameWithoutExtension
+                .removeSuffix(".user")
+                .ifEmpty { file.name }
+            val prefixedId = file.name.substringBefore('_', missingDelimiterValue = "")
+                .takeIf { it.isNotBlank() && metadataById.containsKey(it) }
+            val metadata = metadataByFileName[file.name]
+                ?: prefixedId?.let { metadataById[it] }
+                ?: metadataById[fallbackId]
+
+            val id = metadata?.id ?: fallbackId
+            val enabled = metadata?.enabled ?: true
+            val origin = metadata?.origin ?: ExtensionOrigin.USER
+
+            val rawContent = readScript(file.name) ?: return@mapNotNull null
+            val parsed = UserScriptParser.parse(rawContent)
+
+            if (parsed.scriptBody.isBlank() && parsed.meta.name.isBlank()) {
+                return@mapNotNull null
+            }
+
+            UserScriptParser.parseToUserExtensionMeta(
+                parsed = parsed,
+                id = id,
+                scriptFileName = file.name,
+                originalMatchType = metadata?.matchType,
+                enabled = enabled,
+            ).let { it.copy(origin = origin) }
+        }
     }
 
     fun getActiveExtensions(): List<UserExtensionMeta> =
@@ -144,61 +198,191 @@ class UserExtensionRepository(
 
     fun getExtension(id: String): UserExtension? {
         val meta = getExtensions().find { it.id == id } ?: return null
-        return UserExtension(meta, readScript(meta) ?: "")
+        val scriptContent = readScript(meta.scriptFileName) ?: ""
+        return UserExtension(meta, scriptContent)
     }
 
     fun createExtension(type: ExtensionType): UserExtension {
         val id = UUID.randomUUID().toString()
-        return UserExtension(
-            meta = UserExtensionMeta(
-                id = id,
-                type = type,
-                name = "",
-                enabled = true,
-                scriptFileName = "$id.js",
-                matchType = if (type == ExtensionType.PASSIVE) PassiveMatchType.LINK else null,
-                matchValue = if (type == ExtensionType.PASSIVE) "" else null,
-                runAt = if (type == ExtensionType.PASSIVE) PassiveRunAt.DOM_CONTENT_LOADED else null,
-            ),
-            scriptContent = "",
+        val fileName = "${id}.user.js"
+        val initialContent = if (type == ExtensionType.ACTIVE) {
+            """// ==UserScript==
+// @name        New Extension
+// @namespace   einkbro
+// @match       *://*/*
+// @version     1.0.0
+// ==/UserScript==
+
+// Your script here
+"""
+        } else {
+            """// ==UserScript==
+// @name        New Passive Extension
+// @namespace   einkbro
+// @match       *://*/*
+// @run-at      document-end
+// @version     1.0.0
+// ==/UserScript==
+
+// Your script here
+"""
+        }
+
+        val meta = UserExtensionMeta(
+            id = id,
+            type = type,
+            name = "",
+            enabled = true,
+            scriptFileName = fileName,
+            matchType = if (type == ExtensionType.PASSIVE) PassiveMatchType.LINK else null,
+            matchValue = if (type == ExtensionType.PASSIVE) "*" else null,
+            runAt = if (type == ExtensionType.PASSIVE) PassiveRunAt.DOM_CONTENT_LOADED else null,
+            origin = ExtensionOrigin.USER,
         )
+
+        writeScript(fileName, initialContent)
+
+        val appMetadata = readAppMetadata()
+        writeAppMetadata(
+            AppManagedMetadata(
+                extensions = appMetadata.extensions + ExtensionIndex(
+                    id = id,
+                    fileName = fileName,
+                    enabled = true,
+                    origin = ExtensionOrigin.USER,
+                    matchType = meta.matchType,
+                )
+            )
+        )
+
+        return UserExtension(meta, initialContent)
     }
 
     fun saveExtension(extension: UserExtension) {
         migrateLegacyScriptsIfNeeded()
-        scriptsDir.mkdirs()
-        writeScript(extension.meta.scriptFileName, extension.scriptContent)
 
-        val metadata = readMetadata().toMutableList()
-        val index = metadata.indexOfFirst { it.id == extension.meta.id }
-        if (index >= 0) {
-            metadata[index] = extension.meta
+        val normalizedContent = UserScriptParser.serializeFromExtension(extension)
+        writeScript(extension.meta.scriptFileName, normalizedContent)
+
+        val appMetadata = readAppMetadata()
+        val existingIndex = appMetadata.extensions.indexOfFirst { it.id == extension.meta.id }
+        val newExtensions = if (existingIndex >= 0) {
+            appMetadata.extensions.mapIndexed { index, ext ->
+                if (index == existingIndex) {
+                    ExtensionIndex(
+                        id = extension.meta.id,
+                        fileName = extension.meta.scriptFileName,
+                        enabled = extension.meta.enabled,
+                        origin = extension.meta.origin,
+                        matchType = extension.meta.matchType,
+                    )
+                } else ext
+            }
         } else {
-            metadata.add(extension.meta)
+            appMetadata.extensions + ExtensionIndex(
+                id = extension.meta.id,
+                fileName = extension.meta.scriptFileName,
+                enabled = extension.meta.enabled,
+                origin = extension.meta.origin,
+                matchType = extension.meta.matchType,
+            )
         }
-        writeMetadata(metadata)
+        writeAppMetadata(AppManagedMetadata(extensions = newExtensions))
     }
 
     fun deleteExtension(id: String) {
         migrateLegacyScriptsIfNeeded()
-        val metadata = readMetadata().toMutableList()
-        val index = metadata.indexOfFirst { it.id == id }
-        if (index < 0) return
 
-        val target = metadata.removeAt(index)
-        writeMetadata(metadata)
+        val extensions = getExtensions()
+        val target = extensions.find { it.id == id } ?: return
+
         File(scriptsDir, target.scriptFileName).delete()
+
+        val appMetadata = readAppMetadata()
+        writeAppMetadata(AppManagedMetadata(extensions = appMetadata.extensions.filter { it.id != id }))
     }
 
     fun toggleExtension(id: String) {
         migrateLegacyScriptsIfNeeded()
-        val metadata = readMetadata().toMutableList()
-        val index = metadata.indexOfFirst { it.id == id }
-        if (index < 0) return
 
-        metadata[index] = metadata[index].copy(enabled = !metadata[index].enabled)
-        writeMetadata(metadata)
+        val appMetadata = readAppMetadata()
+        val newExtensions = appMetadata.extensions.map { ext ->
+            if (ext.id == id) {
+                ext.copy(enabled = !ext.enabled)
+            } else ext
+        }
+        writeAppMetadata(AppManagedMetadata(extensions = newExtensions))
     }
+
+    fun importExtension(rawScript: String): Result<UserExtension> {
+        val parsed = UserScriptParser.parse(rawScript)
+        if (parsed.meta.name.isBlank()) {
+            return Result.failure(IllegalArgumentException("Script must have a @name"))
+        }
+
+        val id = UUID.randomUUID().toString()
+        val safeName = parsed.meta.name.lowercase().replace(Regex("[^a-z0-9]"), "_")
+        val fileName = "${id}_$safeName.user.js"
+
+        val normalizedContent = UserScriptParser.serialize(parsed.meta, parsed.scriptBody)
+        writeScript(fileName, normalizedContent)
+
+        val meta = UserScriptParser.parseToUserExtensionMeta(
+            parsed = parsed,
+            id = id,
+            scriptFileName = fileName,
+            enabled = true,
+        ).copy(origin = ExtensionOrigin.IMPORTED)
+
+        val appMetadata = readAppMetadata()
+        writeAppMetadata(
+            AppManagedMetadata(
+                extensions = appMetadata.extensions + ExtensionIndex(
+                    id = id,
+                    fileName = fileName,
+                    enabled = true,
+                    origin = ExtensionOrigin.IMPORTED,
+                    matchType = meta.matchType,
+                )
+            )
+        )
+
+        return Result.success(UserExtension(meta, normalizedContent))
+    }
+
+    fun exportExtensions(): List<ExportedExtension> {
+        return getExtensions().map { meta ->
+            val content = readScript(meta.scriptFileName) ?: ""
+            ExportedExtension(
+                id = meta.id,
+                fileName = meta.scriptFileName,
+                content = content,
+                enabled = meta.enabled,
+                origin = meta.origin,
+                matchType = meta.matchType,
+            )
+        }
+    }
+
+    fun restoreExtensions(exported: List<ExportedExtension>) {
+        val appMetadata = readAppMetadata()
+        val newExtensions = exported.map { extension ->
+            writeScript(extension.fileName, extension.content)
+            ExtensionIndex(
+                id = extension.id,
+                fileName = extension.fileName,
+                enabled = extension.enabled,
+                origin = extension.origin,
+                matchType = extension.matchType,
+            )
+        }
+        val mergedExtensions = appMetadata.extensions.filter { existing ->
+            exported.none { it.id == existing.id }
+        } + newExtensions
+        writeAppMetadata(AppManagedMetadata(extensions = mergedExtensions))
+    }
+
+    fun getScriptContent(fileName: String): String? = readScript(fileName)
 
     fun readScript(meta: UserExtensionMeta): String? = readScript(meta.scriptFileName)
 
@@ -206,51 +390,72 @@ class UserExtensionRepository(
         raw.orEmpty().split(MULTI_VALUE_SEPARATOR).map { it.trim() }.filter { it.isNotEmpty() }
 
     private fun migrateLegacyScriptsIfNeeded() {
-        if (sharedPreferences.getBoolean(KEY_MIGRATED, false)) return
+        if (sharedPreferences.getBoolean(KEY_MIGRATED_V2, false)) return
 
-        val existing = readMetadata()
-        if (existing.isNotEmpty()) {
-            sharedPreferences.edit { putBoolean(KEY_MIGRATED, true) }
+        val extensions = readLegacyExtensions()
+        if (extensions.isEmpty()) {
+            sharedPreferences.edit { putBoolean(KEY_MIGRATED_V2, true) }
             return
         }
 
-        val legacyJson = sharedPreferences.getString(KEY_LEGACY_SCRIPTS, "[]") ?: "[]"
-        val legacyScripts = runCatching { json.decodeFromString<List<UserScript>>(legacyJson) }
-            .getOrElse { emptyList() }
+        val appMetadata = readAppMetadata()
+        val migratedExtensions = appMetadata.extensions.toMutableList()
 
-        if (legacyScripts.isNotEmpty()) {
-            val migrated = legacyScripts.map { script ->
-                val id = UUID.randomUUID().toString()
-                val scriptFileName = "$id.js"
-                writeScript(scriptFileName, script.scriptContent)
-                UserExtensionMeta(
-                    id = id,
-                    type = ExtensionType.PASSIVE,
-                    name = script.name,
-                    enabled = script.enabled,
-                    scriptFileName = scriptFileName,
-                    matchType = PassiveMatchType.LINK,
-                    matchValue = script.urlPattern,
-                    runAt = PassiveRunAt.DOM_CONTENT_LOADED,
-                )
+        for (extension in extensions) {
+            val id = extension.meta.id
+            val scriptFileName = extension.meta.scriptFileName
+            val scriptContent = extension.scriptContent
+
+            if (scriptFileName.isNotBlank() && scriptContent.isNotBlank()) {
+                val content = UserScriptParser.serializeFromExtension(extension)
+                writeScript(scriptFileName, content)
+
+                if (migratedExtensions.none { it.id == id }) {
+                    migratedExtensions.add(
+                        ExtensionIndex(
+                            id = id,
+                            fileName = scriptFileName,
+                            enabled = extension.meta.enabled,
+                            origin = ExtensionOrigin.LEGACY,
+                            matchType = extension.meta.matchType,
+                        )
+                    )
+                }
             }
-            writeMetadata(migrated)
         }
 
-        sharedPreferences.edit {
-            putBoolean(KEY_MIGRATED, true)
-            remove(KEY_LEGACY_SCRIPTS)
+        writeAppMetadata(AppManagedMetadata(extensions = migratedExtensions))
+        sharedPreferences.edit { putBoolean(KEY_MIGRATED_V2, true) }
+    }
+
+    private fun readLegacyExtensions(): List<UserExtension> {
+        val metadata = readLegacyMetadata()
+        return metadata.mapNotNull { meta ->
+            val scriptContent = readScript(meta.scriptFileName)
+            if (scriptContent != null) {
+                UserExtension(meta, scriptContent)
+            } else null
         }
     }
 
-    private fun readMetadata(): List<UserExtensionMeta> {
+    private fun readLegacyMetadata(): List<UserExtensionMeta> {
         val raw = sharedPreferences.getString(KEY_EXTENSION_META, "[]") ?: "[]"
         return runCatching { json.decodeFromString<List<UserExtensionMeta>>(raw) }
             .getOrElse { emptyList() }
     }
 
-    private fun writeMetadata(metadata: List<UserExtensionMeta>) {
-        sharedPreferences.edit { putString(KEY_EXTENSION_META, json.encodeToString(metadata)) }
+    private fun readAppMetadata(): AppManagedMetadata {
+        return if (appMetadataFile.exists()) {
+            runCatching {
+                json.decodeFromString<AppManagedMetadata>(appMetadataFile.readText())
+            }.getOrElse { AppManagedMetadata() }
+        } else {
+            AppManagedMetadata()
+        }
+    }
+
+    private fun writeAppMetadata(metadata: AppManagedMetadata) {
+        appMetadataFile.writeText(json.encodeToString(metadata))
     }
 
     private fun readScript(fileName: String): String? {
@@ -259,15 +464,28 @@ class UserExtensionRepository(
     }
 
     private fun writeScript(fileName: String, content: String) {
+        scriptsDir.mkdirs()
         File(scriptsDir, fileName).writeText(content)
     }
 
     companion object {
         const val MULTI_VALUE_SEPARATOR = "@@"
-
         private const val KEY_EXTENSION_META = "user_extensions_meta"
-        private const val KEY_MIGRATED = "user_extensions_migrated_v1"
+        private const val KEY_MIGRATED_V2 = "user_extensions_migrated_v2"
+        private const val KEY_BUNDLED_INSTALLED = "user_extensions_bundled_installed"
         private const val KEY_LEGACY_SCRIPTS = "user_scripts"
         private const val SCRIPT_DIRECTORY = "user_extensions"
+        private const val APP_METADATA_FILE = "extensions_index.json"
+        private const val ASSET_EXTENSION_DIRECTORY = "extensions"
+        private const val USER_SCRIPT_SUFFIX = ".user.js"
     }
 }
+
+data class ExportedExtension(
+    val id: String,
+    val fileName: String,
+    val content: String,
+    val enabled: Boolean,
+    val origin: ExtensionOrigin,
+    val matchType: PassiveMatchType? = null,
+)

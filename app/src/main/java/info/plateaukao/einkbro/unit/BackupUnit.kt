@@ -33,6 +33,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -49,46 +50,27 @@ class BackupUnit(
     fun backupData(context: Context, uri: Uri): Boolean {
         try {
             val fos = context.contentResolver.openOutputStream(uri) ?: return false
-            val zos = ZipOutputStream(fos)
+            ZipOutputStream(fos).use { zos ->
+                // Add databases to the zip file
+                File(DATABASE_PATH).listFiles()?.forEach { dbFile ->
+                    addFileToZip(zos, dbFile, "databases/${dbFile.name}")
+                }
 
-            // Add databases to the zip file
-            val dbDirectory = File(DATABASE_PATH)
-            val dbFiles = dbDirectory.listFiles()
-            if (dbFiles != null) {
-                for (dbFile in dbFiles) {
-                    val fis = FileInputStream(dbFile)
-                    zos.putNextEntry(ZipEntry(dbFile.name))
-                    val buffer = ByteArray(1024)
-                    var length = fis.read(buffer)
-                    while (length > 0) {
-                        zos.write(buffer, 0, length)
-                        length = fis.read(buffer)
-                    }
-                    zos.closeEntry()
-                    fis.close()
+                // Add shared preferences to the zip file
+                File(SHARED_PREFS_PATH).listFiles()?.forEach { sharedPrefsFile ->
+                    addFileToZip(zos, sharedPrefsFile, "shared_prefs/${sharedPrefsFile.name}")
+                }
+
+                // Add user extensions to the zip file
+                File(context.filesDir, USER_EXTENSIONS_DIR).listFiles()?.forEach { extensionFile ->
+                    addFileToZip(zos, extensionFile, "$USER_EXTENSIONS_DIR/${extensionFile.name}")
+                }
+
+                val extensionIndexFile = File(context.filesDir, EXTENSIONS_INDEX_FILE)
+                if (extensionIndexFile.exists()) {
+                    addFileToZip(zos, extensionIndexFile, EXTENSIONS_INDEX_FILE)
                 }
             }
-
-            // Add shared preferences to the zip file
-            val sharedPrefsDirectory = File(SHARED_PREFS_PATH)
-            val sharedPrefsFiles = sharedPrefsDirectory.listFiles()
-            if (sharedPrefsFiles != null) {
-                for (sharedPrefsFile in sharedPrefsFiles) {
-                    val fis = FileInputStream(sharedPrefsFile)
-                    zos.putNextEntry(ZipEntry(sharedPrefsFile.name))
-                    val buffer = ByteArray(1024)
-                    var length = fis.read(buffer)
-                    while (length > 0) {
-                        zos.write(buffer, 0, length)
-                        length = fis.read(buffer)
-                    }
-                    zos.closeEntry()
-                    fis.close()
-                }
-            }
-
-            zos.close()
-            fos.close()
             EBToast.show(context, R.string.toast_backup_successful)
             return true
         } catch (e: IOException) {
@@ -107,20 +89,16 @@ class BackupUnit(
 
             var zipEntry = zis.nextEntry
             while (zipEntry != null) {
-                val file = File(
-                    if (zipEntry.name.endsWith(".db") ||
-                        zipEntry.name.contains("einkbro_db")
-                    ) "$DATABASE_PATH${zipEntry.name}"
-                    else "$SHARED_PREFS_PATH${zipEntry.name}"
-                )
-                val fos = FileOutputStream(file)
-                val buffer = ByteArray(1024)
-                var length = zis.read(buffer)
-                while (length > 0) {
-                    fos.write(buffer, 0, length)
-                    length = zis.read(buffer)
+                val file = resolveRestoreTarget(context, zipEntry.name)
+                file.parentFile?.mkdirs()
+                FileOutputStream(file).use { fos ->
+                    val buffer = ByteArray(1024)
+                    var length = zis.read(buffer)
+                    while (length > 0) {
+                        fos.write(buffer, 0, length)
+                        length = zis.read(buffer)
+                    }
                 }
-                fos.close()
                 zipEntry = zis.nextEntry
             }
             zis.close()
@@ -337,10 +315,46 @@ class BackupUnit(
         activity.startActivity(Intent.createChooser(intent, "Share via"))
     }
 
+    private fun addFileToZip(zos: ZipOutputStream, file: File, entryName: String) {
+        FileInputStream(file).use { fis ->
+            addStreamToZip(zos, fis, entryName)
+        }
+    }
+
+    private fun addStreamToZip(zos: ZipOutputStream, inputStream: InputStream, entryName: String) {
+        zos.putNextEntry(ZipEntry(entryName))
+        val buffer = ByteArray(1024)
+        var length = inputStream.read(buffer)
+        while (length > 0) {
+            zos.write(buffer, 0, length)
+            length = inputStream.read(buffer)
+        }
+        zos.closeEntry()
+    }
+
+    private fun resolveRestoreTarget(context: Context, entryName: String): File {
+        return when {
+            entryName.startsWith("databases/") ->
+                File(DATABASE_PATH, entryName.removePrefix("databases/"))
+            entryName.startsWith("shared_prefs/") ->
+                File(SHARED_PREFS_PATH, entryName.removePrefix("shared_prefs/"))
+            entryName.startsWith("$USER_EXTENSIONS_DIR/") ->
+                File(context.filesDir, entryName)
+            entryName == EXTENSIONS_INDEX_FILE ->
+                File(context.filesDir, EXTENSIONS_INDEX_FILE)
+            entryName.endsWith(".db") || entryName.contains("einkbro_db") ->
+                File(DATABASE_PATH, entryName)
+            else ->
+                File(SHARED_PREFS_PATH, entryName)
+        }
+    }
+
 
     companion object {
         private const val DATABASE_PATH = "/data/data/info.plateaukao.einkbro/databases/"
         private const val SHARED_PREFS_PATH = "/data/data/info.plateaukao.einkbro/shared_prefs/"
+        private const val USER_EXTENSIONS_DIR = "user_extensions"
+        private const val EXTENSIONS_INDEX_FILE = "extensions_index.json"
     }
 }
 
@@ -369,5 +383,4 @@ private fun JSONObject.toBookmark(): Bookmark =
         optInt("parent"),
         optInt("order")
     ).apply { id = optInt("id") }
-
 
