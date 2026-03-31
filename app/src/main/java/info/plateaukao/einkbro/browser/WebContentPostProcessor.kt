@@ -2,7 +2,6 @@ package info.plateaukao.einkbro.browser
 
 import android.app.Application
 import info.plateaukao.einkbro.preference.ConfigManager
-import info.plateaukao.einkbro.preference.UserExtensionRepository
 import info.plateaukao.einkbro.unit.HelperUnit
 import info.plateaukao.einkbro.unit.ViewUnit
 import info.plateaukao.einkbro.view.EBWebView
@@ -12,7 +11,6 @@ import org.koin.core.component.inject
 class WebContentPostProcessor : KoinComponent {
     private val configManager: ConfigManager by inject()
     private val application: Application by inject()
-    private val userExtensionRepository: UserExtensionRepository by inject()
     private val userExtensionInjector: UserExtensionInjector by inject()
 
     fun postProcess(ebWebView: EBWebView, url: String) {
@@ -73,11 +71,6 @@ class WebContentPostProcessor : KoinComponent {
             val jsZoomTextWrapReflow = HelperUnit.loadAssetFile("zoom-text-wrap-reflow.js")
             ebWebView.evaluateJavascript(jsZoomTextWrapReflow, null)
         }
-    }
-
-    fun registerUserExtensionScripts(ebWebView: EBWebView) {
-        userExtensionRepository.getExtensions()
-        userExtensionInjector.registerDocumentStartScripts(ebWebView)
     }
 
     private fun processUserScripts(ebWebView: EBWebView, url: String) {

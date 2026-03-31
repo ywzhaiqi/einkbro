@@ -188,6 +188,7 @@ open class EBWebView(
         resetState()
         settings.textZoom = config.fontSize
         settings.cacheMode = WebSettings.LOAD_DEFAULT
+        userExtensionInjector.registerDocumentStartScripts(this)
         super.reload()
 
         postDelayed({
@@ -386,6 +387,7 @@ open class EBWebView(
         settings.javaScriptEnabled = config.enableJavascript || javascript.isWhite(url)
         toggleCookieSupport(config.cookies || cookie.isWhite(url))
 
+        userExtensionInjector.registerDocumentStartScripts(this)
         super.loadUrl(url, additionalHttpHeaders)
     }
 
@@ -426,6 +428,7 @@ open class EBWebView(
         settings.javaScriptEnabled = config.enableJavascript || javascript.isWhite(url)
         toggleCookieSupport(config.cookies || cookie.isWhite(url))
 
+        userExtensionInjector.registerDocumentStartScripts(this)
         super.loadUrl(BrowserUnit.queryWrapper(context, strippedUrl), requestHeaders)
     }
 

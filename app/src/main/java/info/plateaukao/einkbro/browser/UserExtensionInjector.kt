@@ -61,6 +61,7 @@ class UserExtensionInjector(
         val matchValuesJson = Json.encodeToString(repository.splitMatchValues(extension.matchValue))
         val matchType = (extension.matchType ?: PassiveMatchType.LINK).name
         val runAt = (extension.runAt ?: PassiveRunAt.DOM_CONTENT_LOADED).name
+        val escapedScriptContent = scriptContent.replace("$" + "{", "\\$" + "{")
 
         return """
             (function() {
@@ -92,7 +93,7 @@ class UserExtensionInjector(
 
               const run = function() {
                 try {
-                  $scriptContent
+                  $escapedScriptContent
                 } catch (error) {
                   console.error('User extension failed: ' + extensionName, error);
                 }
@@ -125,20 +126,15 @@ class UserExtensionInjector(
     }
 
     private fun String.asJsString(): String =
-        buildString(length + 2) {
-            append('"')
-            for (ch in this@asJsString) {
-                when (ch) {
-                    '\\' -> append("\\\\")
-                    '"' -> append("\\\"")
-                    '\n' -> append("\\n")
-                    '\r' -> append("\\r")
-                    '\t' -> append("\\t")
-                    else -> append(ch)
-                }
-            }
-            append('"')
-        }
+        this
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+            .replace("`", "\\`")
+            .replace("$" + "{", "\\$" + "{")
+            .let { "\"$it\"" }
 
     companion object {
         private const val TAG = "UserExtensionInjector"
